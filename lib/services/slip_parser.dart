@@ -23,20 +23,26 @@ class SlipParseResult {
 }
 
 class SlipParser {
-  // คำสำคัญสำหรับตรวจสอบว่าเป็นสลิปหรือไม่
+  // คำสำคัญสำหรับตรวจสอบว่าเป็นสลิปหรือไม่ (รวมชื่อแอป/ธนาคารในไทยและคำภาษาอังกฤษทั่วไป)
   static const _slipKeywords = [
+    // ทั่วไป (General)
     'โอนเงิน', 'transfer', 'reference', 'ref', 'บาท', 'baht', 'thb',
     'transaction', 'promptpay', 'qr payment', 'พร้อมเพย์', 'เลขอ้างอิง',
     'สำเร็จ', 'successful', 'จำนวนเงิน', 'amount', 'ผู้โอน', 'ผู้รับ',
     'จาก', 'ไปยัง', 'from', 'to', 'ค่าธรรมเนียม', 'fee',
+    // ชื่อแอป/ธนาคารในสลิป (Apps/Banks)
+    'k plus', 'kplus', 'kbank', 'kasikorn', 'scb', 'siam commercial',
+    'krungthai', 'ktb', 'next', 'bualuang', 'bangkok bank', 'mmo',
+    'gsb', 'ออมสิน', 'krungsri', 'bay', 'ttb', 'tmb', 'thanachart',
+    'tisco', 'kkp', 'kiatnakin', 'baac', 'ธ.ก.ส', 'cimb', 'uob',
   ];
 
   // ชื่อธนาคารที่รองรับ
   static const _bankPatterns = {
-    'กสิกรไทย / KBank': ['กสิกร', 'kbank', 'kasikorn', 'k bank', 'k-bank'],
-    'กรุงไทย / KTB': ['กรุงไทย', 'ktb', 'krungthai', 'krung thai'],
-    'ไทยพาณิชย์ / SCB': ['ไทยพาณิชย์', 'scb', 'siam commercial', 'scbeasy'],
-    'กรุงเทพ / BBL': ['กรุงเทพ', 'bbl', 'bangkok bank', 'bualuang'],
+    'กสิกรไทย / KBank': ['กสิกร', 'kbank', 'kasikorn', 'k bank', 'k-bank', 'k plus', 'kplus', 'k-plus'],
+    'กรุงไทย / KTB': ['กรุงไทย', 'ktb', 'krungthai', 'krung thai', 'next'],
+    'ไทยพาณิชย์ / SCB': ['ไทยพาณิชย์', 'scb', 'siam commercial', 'scbeasy', 'scb easy'],
+    'กรุงเทพ / BBL': ['กรุงเทพ', 'bbl', 'bangkok bank', 'bualuang', 'mualuang'],
     'ออมสิน / GSB': ['ออมสิน', 'gsb', 'government savings'],
     'กรุงศรี / BAY': ['กรุงศรี', 'bay', 'krungsri', 'ayudhya'],
     'ทีทีบี / TTB': ['ttb', 'ทีทีบี', 'tmb', 'thanachart', 'ทีเอ็มบี', 'ธนชาต'],
@@ -49,15 +55,30 @@ class SlipParser {
   /// Check if the text looks like a bank slip
   static bool isSlipText(String text) {
     final lowerText = text.toLowerCase();
+    
+    // 1. ตรวจสอบคำสำคัญทั่วไปและชื่อธนาคาร
     int matchCount = 0;
-
     for (final keyword in _slipKeywords) {
       if (lowerText.contains(keyword.toLowerCase())) {
         matchCount++;
       }
     }
 
-    return matchCount >= 3;
+    // 2. ตรวจสอบว่ามีตัวเลขยอดเงิน (ทศนิยม 2 ตำแหน่ง) หรือไม่
+    final hasDecimal = RegExp(r'\b\d+[\.,]\d{2}\b').hasMatch(lowerText);
+    
+    // 3. ตรวจสอบว่ามีเลขบัญชีหรือเลขอ้างอิงที่เป็นตัวเลขยาวๆ หรือไม่ (เลขอ้างอิงโอนเงิน มักจะยาว 10 หลักขึ้นไป)
+    final hasLongNum = RegExp(r'\b\d{10,}\b').hasMatch(lowerText);
+
+    // เงื่อนไขการตรวจจับว่าเป็นสลิป:
+    // - มีคำสำคัญ/ชื่อธนาคาร 3 คำขึ้นไป
+    // - หรือ มีคำสำคัญ 2 คำขึ้นไป + มียอดเงินทศนิยม
+    // - หรือ มีคำสำคัญอย่างน้อย 1 คำ + มียอดเงินทศนิยม + มีตัวเลขยาว (เลขอ้างอิง/บัญชี)
+    if (matchCount >= 3) return true;
+    if (matchCount >= 2 && hasDecimal) return true;
+    if (matchCount >= 1 && hasDecimal && hasLongNum) return true;
+
+    return false;
   }
 
   /// Parse ข้อความจากสลิปเป็น SlipParseResult
@@ -133,9 +154,9 @@ class SlipParser {
     // Pattern: จำนวนเงิน หรือ amount ตามด้วยตัวเลข
     final amountPatterns = [
       // "จำนวนเงิน 1,500.00 บาท" หรือ "Amount 1,500.00 THB"
-      RegExp(r'(?:จำนวน(?:เงิน)?|amount|total|ยอดเงิน|ยอดโอน)[:\s]*([\d,]+\.?\d*)', caseSensitive: false),
-      // "1,500.00 บาท" หรือ "1,500.00 THB" หรือ "1,500.00 Baht"
-      RegExp(r'([\d,]+\.\d{2})\s*(?:บาท|thb|baht)', caseSensitive: false),
+      RegExp(r'(?:จำนวน(?:เงิน)?|amount|total|ยอดเงิน|ยอดโอน|ยอดเงินโอน)[:\s]*([\d,]+\.?\d*)', caseSensitive: false),
+      // "1,500.00 บาท" หรือ "1,500.00 THB" หรือ "1,500.00 Baht" (รวมคำอ่านเพี้ยนจากการสแกนแบบ Latin เช่น un, um, บ.)
+      RegExp(r'([\d,]+\.\d{2})\s*(?:บาท|thb|baht|un|um|บ\.)', caseSensitive: false),
       // ตัวเลขขนาดใหญ่ที่มีทศนิยม 2 ตำแหน่ง
       RegExp(r'\b([\d,]+\.\d{2})\b'),
     ];
@@ -216,13 +237,15 @@ class SlipParser {
     final patterns = [
       RegExp(r'(?:ref(?:erence)?(?:\s*(?:no|number|#))?|เลขอ้างอิง|รหัสอ้างอิง|เลขที่รายการ)[:\s]*([A-Za-z0-9]+)', caseSensitive: false),
       RegExp(r'(?:transaction\s*(?:id|no))[:\s]*([A-Za-z0-9]+)', caseSensitive: false),
+      // Fallback: ดึงตัวเลขต่อกันยาวๆ 10-20 หลัก ที่มักจะเป็นเลขที่อ้างอิงหรือเลขที่ธุรกรรม
+      RegExp(r'\b(\d{10,20})\b'),
     ];
 
     for (final pattern in patterns) {
-      final match = pattern.firstMatch(text);
-      if (match != null) {
+      final matches = pattern.allMatches(text);
+      for (final match in matches) {
         final ref = match.group(1)?.trim();
-        if (ref != null && ref.isNotEmpty) {
+        if (ref != null && ref.isNotEmpty && ref.length >= 10) {
           return ref;
         }
       }
