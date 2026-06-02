@@ -399,4 +399,10 @@ class DatabaseHelper {
     }
     return processed;
   }
+
+  /// ล้างประวัติรูปภาพที่สแกนไปแล้ว เพื่อให้เริ่มสแกนใหม่ทั้งหมดได้
+  Future<int> clearProcessedAssets() async {
+    final db = await database;
+    return await db.delete('processed_assets');
+  }
 }

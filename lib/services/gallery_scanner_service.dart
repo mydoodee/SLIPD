@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../database/database_helper.dart';
 import '../models/transaction.dart';
@@ -43,6 +44,7 @@ class GalleryScannerService {
 
   Future<bool> checkAndRequestPermission() async {
     final PermissionState state = await PhotoManager.requestPermissionExtend();
+    debugPrint('GalleryScannerService: Permission state: $state');
     return state == PermissionState.authorized || state == PermissionState.limited;
   }
 
@@ -51,8 +53,10 @@ class GalleryScannerService {
     int limit = 100,
     Function(int current, int total)? onProgress,
   }) async {
+    debugPrint('GalleryScannerService: Starting scan with limit=$limit');
     final hasPermission = await checkAndRequestPermission();
     if (!hasPermission) {
+      debugPrint('GalleryScannerService: Permission not granted');
       return GalleryScanResult(permissionGranted: false, discoveredSlips: []);
     }
 
@@ -62,11 +66,14 @@ class GalleryScannerService {
       onlyAll: true,
     );
 
+    debugPrint('GalleryScannerService: Found ${albums.length} albums');
     if (albums.isEmpty) {
       return GalleryScanResult(permissionGranted: true, discoveredSlips: [], totalScanned: 0);
     }
 
     final AssetPathEntity mainAlbum = albums.first;
+    final int totalAssetsInAlbum = await mainAlbum.assetCountAsync;
+    debugPrint('GalleryScannerService: Main album name: "${mainAlbum.name}", total assets: $totalAssetsInAlbum');
     
     // ดึงรูปภาพจำนวนจำกัดล่าสุด
     final List<AssetEntity> assets = await mainAlbum.getAssetListRange(
@@ -74,6 +81,7 @@ class GalleryScannerService {
       end: limit,
     );
 
+    debugPrint('GalleryScannerService: Fetched ${assets.length} assets from main album');
     if (assets.isEmpty) {
       return GalleryScanResult(permissionGranted: true, discoveredSlips: [], totalScanned: 0);
     }
@@ -82,11 +90,14 @@ class GalleryScannerService {
     
     // เช็คในฐานข้อมูลว่ามีตัวไหนแสกนไปแล้วบ้าง
     final processedAssetIds = await _db.getProcessedAssetIds(assetIds);
+    debugPrint('GalleryScannerService: Already processed asset count: ${processedAssetIds.length}');
 
     // กรองเอาเฉพาะรูปภาพใหม่ที่ยังไม่ได้สแกน
     final newAssets = assets.where((a) => !processedAssetIds.contains(a.id)).toList();
+    debugPrint('GalleryScannerService: New assets to scan: ${newAssets.length}');
     
     if (newAssets.isEmpty) {
+      debugPrint('GalleryScannerService: No new assets to scan');
       return GalleryScanResult(
         permissionGranted: true,
         discoveredSlips: [],
@@ -116,9 +127,11 @@ class GalleryScannerService {
       final asset = newAssets[i];
       onProgress?.call(i + 1, newAssets.length);
 
+      debugPrint('GalleryScannerService: Scanning asset [${i + 1}/${newAssets.length}] (ID: ${asset.id}, width: ${asset.width}, height: ${asset.height})');
       try {
         final File? file = await asset.file;
         if (file == null) {
+          debugPrint('GalleryScannerService: Failed to get file for asset ${asset.id}');
           // หากดึงไฟล์ไม่ได้ ให้บันทึกว่าตรวจสอบแล้วและไม่ใช่สลิปเพื่อข้ามในอนาคต
           await _db.markAssetProcessed(asset.id, false);
           continue;
@@ -127,12 +140,16 @@ class GalleryScannerService {
         // 1. ทำ OCR อ่านข้อความจากรูปภาพ
         final rawText = await _ocrService.extractText(file.path);
         if (rawText == null || rawText.isEmpty) {
+          debugPrint('GalleryScannerService: OCR returned empty/null text for ${asset.id}');
           await _db.markAssetProcessed(asset.id, false);
           continue;
         }
 
+        debugPrint('GalleryScannerService: OCR extracted ${rawText.length} characters. Snippet:\n"""\n${rawText.length > 150 ? '${rawText.substring(0, 150)}...' : rawText}\n"""');
+
         // 2. วิเคราะห์ว่าเป็นสลิปหรือไม่
         final parseResult = SlipParser.parse(rawText);
+        debugPrint('GalleryScannerService: Is slip: ${parseResult.isSlip} (Amount: ${parseResult.amount}, Date: ${parseResult.date}, Bank: ${parseResult.bankName}, RefNo: ${parseResult.refNo})');
         
         if (parseResult.isSlip) {
           // บันทึกในระบบว่ารูปภาพนี้สแกนและเป็นสลิปแล้ว
@@ -145,6 +162,7 @@ class GalleryScannerService {
             refNo: parseResult.refNo,
           );
 
+          debugPrint('GalleryScannerService: Duplicate check for ${asset.id}: isDuplicate=${dupCheck.isDuplicate}');
           if (!dupCheck.isDuplicate) {
             // คัดกรองหมวดหมู่แนะนำตามคำสำคัญ
             final suggestedCategory = CategoryClassifier.classify(
@@ -176,17 +194,23 @@ class GalleryScannerService {
               result: parseResult,
               prefillData: prefill,
             ));
+            debugPrint('GalleryScannerService: Discovered slip added: ${parseResult.amount} THB to ${parseResult.receiver}');
+          } else {
+            debugPrint('GalleryScannerService: Slip skipped because it is duplicate in transactions database.');
           }
         } else {
           // บันทึกในระบบว่ารูปภาพนี้สแกนและไม่ใช่สลิป
+          debugPrint('GalleryScannerService: Asset is not a bank slip.');
           await _db.markAssetProcessed(asset.id, false);
         }
-      } catch (e) {
+      } catch (e, stack) {
+        debugPrint('GalleryScannerService: Error scanning asset ${asset.id}: $e\n$stack');
         // กรณีเกิดข้อผิดพลาดในการสแกนไฟล์ใดไฟล์หนึ่ง ให้บันทึกข้ามไปก่อนเพื่อไม่ให้ระบบค้าง
         await _db.markAssetProcessed(asset.id, false);
       }
     }
 
+    debugPrint('GalleryScannerService: Scan completed. Discovered ${discovered.length} slips out of ${newAssets.length} scanned.');
     return GalleryScanResult(
       permissionGranted: true,
       discoveredSlips: discovered,

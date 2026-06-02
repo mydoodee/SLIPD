@@ -231,7 +231,9 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Icon(Icons.construction, color: AppTheme.primaryGreen),
             SizedBox(width: 10),
-            Text('เร็วๆ นี้ / Coming soon v2.0'),
+            Expanded(
+              child: Text('เร็วๆ นี้ / Coming soon v2.0'),
+            ),
           ],
         ),
         backgroundColor: AppTheme.cardBgLight,

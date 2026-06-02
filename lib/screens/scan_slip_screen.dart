@@ -612,6 +612,21 @@ class _ScanSlipScreenState extends State<ScanSlipScreen>
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _resetScanHistory,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: AppTheme.textMuted),
+              label: const Text(
+                'รีเซ็ตประวัติการสแกน / Reset Scan History',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 11,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -770,7 +785,7 @@ class _ScanSlipScreenState extends State<ScanSlipScreen>
 
     try {
       final result = await _galleryScanner.scanGallery(
-        limit: 100,
+        limit: 300,
         onProgress: (current, total) {
           setState(() {
             _scanProgressText = 'กำลังสแกนวิเคราะห์รูปที่ $current / $total รูป...';
@@ -843,5 +858,60 @@ class _ScanSlipScreenState extends State<ScanSlipScreen>
     setState(() {
       _discoveredSlips.removeAt(index);
     });
+  }
+
+  Future<void> _resetScanHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.cardBg,
+        title: const Text(
+          'ยืนยันรีเซ็ตประวัติ / Confirm Reset',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          'ระบบจะลบความจำภาพเดิมที่เคยสแกน เพื่อให้สามารถค้นหาและสแกนคลังรูปภาพทั้งหมดใหม่อีกครั้งได้\n\nDo you want to reset scan history to allow re-scanning all photos?',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ยกเลิก / Cancel', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'ยืนยัน / Reset',
+              style: TextStyle(color: AppTheme.expenseColor, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = DatabaseHelper();
+      await db.clearProcessedAssets();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: AppTheme.primaryGreen),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text('รีเซ็ตประวัติสแกนแล้ว! สามารถสแกนคลังภาพทั้งหมดใหม่ได้ทันที'),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.cardBgLight,
+          ),
+        );
+      }
+    }
   }
 }

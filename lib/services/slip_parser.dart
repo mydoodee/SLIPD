@@ -74,9 +74,11 @@ class SlipParser {
     // - มีคำสำคัญ/ชื่อธนาคาร 3 คำขึ้นไป
     // - หรือ มีคำสำคัญ 2 คำขึ้นไป + มียอดเงินทศนิยม
     // - หรือ มีคำสำคัญอย่างน้อย 1 คำ + มียอดเงินทศนิยม + มีตัวเลขยาว (เลขอ้างอิง/บัญชี)
+    // - หรือ มีตัวเลขทศนิยม + มีตัวเลขยาว (เพื่อรองรับกรณีที่ OCR อ่านคำสำคัญไม่พบเนื่องจากปัญหาภาษา/ฟอนต์)
     if (matchCount >= 3) return true;
     if (matchCount >= 2 && hasDecimal) return true;
     if (matchCount >= 1 && hasDecimal && hasLongNum) return true;
+    if (hasDecimal && hasLongNum) return true;
 
     return false;
   }
