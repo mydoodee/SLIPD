@@ -1,0 +1,51 @@
+name: slip_d
+description: "slipD - แอปบันทึกรายรับ-รายจ่ายอัตโนมัติจากสลิปโอนเงิน"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Database
+  sqflite: ^2.4.2
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # Image & Camera
+  image_picker: ^1.1.2
+
+  # Permissions
+  permission_handler: ^11.4.0
+
+  # OCR
+  google_mlkit_text_recognition: ^0.14.0
+
+  # State Management
+  provider: ^6.1.5
+
+  # Charts
+  fl_chart: ^0.70.2
+
+  # Utilities
+  intl: ^0.20.2
+  crypto: ^3.0.6
+
+  # Fonts
+  google_fonts: ^6.2.1
+  photo_manager: ^3.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
